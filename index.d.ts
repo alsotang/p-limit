@@ -1,14 +1,14 @@
 declare namespace pLimit {
 	interface Limit {
 		/**
-		The number of promises that are currently running.
+		@param fn - Promise-returning/async function.
+		@param arguments - Any arguments to pass through to `fn`. Support for passing arguments on to the `fn` is provided in order to be able to avoid creating unnecessary closures. You probably don't need this optimization unless you're pushing a lot of functions.
+		@returns The promise returned by calling `fn(...arguments)`.
 		*/
-		readonly activeCount: number;
-
-		/**
-		The number of promises that are waiting to run (i.e. their internal `fn` was not called yet).
-		*/
-		readonly pendingCount: number;
+		<Arguments extends unknown[], ReturnType>(
+			fn: (...arguments: Arguments) => PromiseLike<ReturnType> | ReturnType,
+			...arguments: Arguments
+		): Promise<ReturnType>;
 
 		/**
 		Discard pending promises that are waiting to run.
@@ -20,14 +20,14 @@ declare namespace pLimit {
 		clearQueue: () => void;
 
 		/**
-		@param fn - Promise-returning/async function.
-		@param arguments - Any arguments to pass through to `fn`. Support for passing arguments on to the `fn` is provided in order to be able to avoid creating unnecessary closures. You probably don't need this optimization unless you're pushing a lot of functions.
-		@returns The promise returned by calling `fn(...arguments)`.
+		The number of promises that are currently running.
 		*/
-		<Arguments extends unknown[], ReturnType>(
-			fn: (...arguments: Arguments) => PromiseLike<ReturnType> | ReturnType,
-			...arguments: Arguments
-		): Promise<ReturnType>;
+		readonly activeCount: number;
+
+		/**
+		The number of promises that are waiting to run (i.e. their internal `fn` was not called yet).
+		*/
+		readonly pendingCount: number;
 	}
 }
 
