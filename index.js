@@ -1,71 +1,66 @@
 'use strict';
 const Queue = require('yocto-queue');
 
-const pLimit = concurrency => {
-	if (!((Number.isInteger(concurrency) || concurrency === Infinity) && concurrency > 0)) {
-		throw new TypeError('Expected `concurrency` to be a number from 1 and up');
+
+function pLimit(_concurrency) {
+	let concurrency = _concurrency
+	let activeCount = 0;
+	if (!(Number.isInteger(concurrency) && concurrency > 0)) {
+		throw new TypeError(`_concurrency type error`)
 	}
 
-	const queue = new Queue();
-	let activeCount = 0;
+	const q = new Queue();
 
-	const next = () => {
-		activeCount--;
 
-		if (queue.size > 0) {
-			queue.dequeue()();
+	async function enqueue(fnWithArgs, resolve) {
+		q.enqueue([fnWithArgs, resolve])
+
+		await Promise.resolve();
+
+		dequeue()
+	}
+
+	async function dequeue() {
+		if (activeCount < concurrency && q.size > 0) {
+			activeCount++;
+			const [[promiseFn, fnArgs], resolve] = q.dequeue()
+			const result = (async () => promiseFn(...fnArgs))();
+
+			resolve(result);
+
+			try {
+				await result
+			} catch { }
+
+			activeCount--;
+
+			dequeue()
 		}
-	};
+	}
 
-	const run = async (fn, resolve, args) => {
-		activeCount++;
+	const limit = function (promiseFn, ...fnArgs) {
+		return new Promise(resolve => {
+			enqueue([promiseFn, fnArgs], resolve)
+		})
+	}
 
-		const result = (async () => fn(...args))();
-
-		resolve(result);
-
-		try {
-			await result;
-		} catch {}
-
-		next();
-	};
-
-	const enqueue = (fn, resolve, args) => {
-		queue.enqueue(run.bind(null, fn, resolve, args));
-
-		(async () => {
-			// This function needs to wait until the next microtask before comparing
-			// `activeCount` to `concurrency`, because `activeCount` is updated asynchronously
-			// when the run function is dequeued and called. The comparison in the if-statement
-			// needs to happen asynchronously as well to get an up-to-date value for `activeCount`.
-			await Promise.resolve();
-
-			if (activeCount < concurrency && queue.size > 0) {
-				queue.dequeue()();
-			}
-		})();
-	};
-
-	const generator = (fn, ...args) => new Promise(resolve => {
-		enqueue(fn, resolve, args);
-	});
-
-	Object.defineProperties(generator, {
-		activeCount: {
-			get: () => activeCount
-		},
-		pendingCount: {
-			get: () => queue.size
-		},
-		clearQueue: {
-			value: () => {
-				queue.clear();
-			}
+	Object.defineProperty(limit, 'pendingCount', {
+		get() {
+			return q.size
 		}
-	});
+	})
 
-	return generator;
-};
+	Object.defineProperty(limit, 'clearQueue', {
+		value: q.clear.bind(q)
+	})
+
+	Object.defineProperty(limit, 'activeCount', {
+		get() {
+			return activeCount
+		}
+	})
+
+	return limit;
+}
 
 module.exports = pLimit;
